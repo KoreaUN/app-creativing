@@ -5,10 +5,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SplashScreen from 'expo-splash-screen';
 
 import InputScreen from './src/screens/InputScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import { initDatabase } from './src/db/database';
+
+SplashScreen.preventAutoHideAsync();
 
 const Tab = createBottomTabNavigator();
 
@@ -18,14 +21,20 @@ export default function App() {
 
   useEffect(() => {
     initDatabase()
-      .then(() => setReady(true))
-      .catch((e) => setError(String(e?.message ?? e)));
+      .then(() => {
+        setReady(true);
+        SplashScreen.hideAsync();
+      })
+      .catch((e) => {
+        setError(String(e?.message ?? e));
+        SplashScreen.hideAsync();
+      });
   }, []);
 
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>DB 초기화 실패: {error}</Text>
+        <Text style={styles.errorText}>초기화 실패: {error}</Text>
       </View>
     );
   }
