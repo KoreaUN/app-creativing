@@ -1,62 +1,43 @@
-import * as SQLite from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const db = SQLite.openDatabase('budget.db');
+const KEY = 'expenses';
 
-function run(sql, args = []) {
-  return new Promise((resolve, reject) => {
-    db.transaction(
-      (tx) => tx.executeSql(sql, args, (_, result) => resolve(result)),
-      (err) => reject(err)
-    );
-  });
+async function getAll() {
+  const json = await AsyncStorage.getItem(KEY);
+  return json ? JSON.parse(json) : [];
 }
 
-function query(sql, args = []) {
-  return new Promise((resolve, reject) => {
-    db.transaction(
-      (tx) =>
-        tx.executeSql(sql, args, (_, { rows }) => resolve(rows._array)),
-      (err) => reject(err)
-    );
-  });
+async function saveAll(expenses) {
+  await AsyncStorage.setItem(KEY, JSON.stringify(expenses));
 }
 
 export async function initDatabase() {
-  await run(`
-    CREATE TABLE IF NOT EXISTS expenses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      amount INTEGER NOT NULL,
-      category TEXT NOT NULL,
-      memo TEXT,
-      date TEXT NOT NULL
-    )
-  `);
+  // AsyncStorage는 별도 초기화 불필요
 }
 
 export async function insertExpense({ amount, category, memo, date }) {
-  const result = await run(
-    'INSERT INTO expenses (amount, category, memo, date) VALUES (?, ?, ?, ?)',
-    [amount, category, memo ?? '', date]
-  );
-  return result.insertId;
+  const expenses = await getAll();
+  const item = { id: Date.now(), amount, category, memo: memo ?? '', date };
+  await saveAll([...expenses, item]);
+  return item.id;
 }
 
 export async function fetchExpenses() {
-  return query(
-    'SELECT id, amount, category, memo, date FROM expenses ORDER BY date DESC, id DESC'
-  );
+  const expenses = await getAll();
+  return [...expenses].sort((a, b) => {
+    const dateDiff = b.date.localeCompare(a.date);
+    return dateDiff !== 0 ? dateDiff : b.id - a.id;
+  });
 }
 
 export async function deleteExpense(id) {
-  await run('DELETE FROM expenses WHERE id = ?', [id]);
+  const expenses = await getAll();
+  await saveAll(expenses.filter((e) => e.id !== id));
 }
 
 export async function fetchMonthlyTotal(yearMonth) {
-  const rows = await query(
-    `SELECT COALESCE(SUM(amount), 0) AS total
-     FROM expenses
-     WHERE substr(date, 1, 7) = ?`,
-    [yearMonth]
-  );
-  return rows[0]?.total ?? 0;
+  const expenses = await getAll();
+  return expenses
+    .filter((e) => e.date.startsWith(yearMonth))
+    .reduce((sum, e) => sum + e.amount, 0);
 }
