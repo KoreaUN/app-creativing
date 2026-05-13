@@ -1,57 +1,62 @@
 import * as SQLite from 'expo-sqlite';
 
-let dbPromise = null;
+const db = SQLite.openDatabase('budget.db');
 
-function getDb() {
-  if (!dbPromise) {
-    dbPromise = SQLite.openDatabaseAsync('budget.db');
-  }
-  return dbPromise;
+function run(sql, args = []) {
+  return new Promise((resolve, reject) => {
+    db.transaction(
+      (tx) => tx.executeSql(sql, args, (_, result) => resolve(result)),
+      (err) => reject(err)
+    );
+  });
+}
+
+function query(sql, args = []) {
+  return new Promise((resolve, reject) => {
+    db.transaction(
+      (tx) =>
+        tx.executeSql(sql, args, (_, { rows }) => resolve(rows._array)),
+      (err) => reject(err)
+    );
+  });
 }
 
 export async function initDatabase() {
-  const db = await getDb();
-  await db.execAsync(`
-    PRAGMA journal_mode = WAL;
+  await run(`
     CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       amount INTEGER NOT NULL,
       category TEXT NOT NULL,
       memo TEXT,
-      date TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+      date TEXT NOT NULL
+    )
   `);
 }
 
 export async function insertExpense({ amount, category, memo, date }) {
-  const db = await getDb();
-  const result = await db.runAsync(
+  const result = await run(
     'INSERT INTO expenses (amount, category, memo, date) VALUES (?, ?, ?, ?)',
     [amount, category, memo ?? '', date]
   );
-  return result.lastInsertRowId;
+  return result.insertId;
 }
 
 export async function fetchExpenses() {
-  const db = await getDb();
-  return db.getAllAsync(
+  return query(
     'SELECT id, amount, category, memo, date FROM expenses ORDER BY date DESC, id DESC'
   );
 }
 
 export async function deleteExpense(id) {
-  const db = await getDb();
-  await db.runAsync('DELETE FROM expenses WHERE id = ?', [id]);
+  await run('DELETE FROM expenses WHERE id = ?', [id]);
 }
 
 export async function fetchMonthlyTotal(yearMonth) {
-  const db = await getDb();
-  const row = await db.getFirstAsync(
+  const rows = await query(
     `SELECT COALESCE(SUM(amount), 0) AS total
      FROM expenses
      WHERE substr(date, 1, 7) = ?`,
     [yearMonth]
   );
-  return row?.total ?? 0;
+  return rows[0]?.total ?? 0;
 }
